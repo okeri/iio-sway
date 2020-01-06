@@ -1,5 +1,4 @@
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -10,10 +9,10 @@
 enum Orientation { Undefined, Normal, RightUp, LeftUp, BottomUp };
 
 DBusError error;
-atomic_bool running;
 char* output = "eDP-1";
 
 void dbus_disconnect(DBusConnection* connection) {
+    dbus_connection_flush(connection);
     dbus_connection_close(connection);
     dbus_connection_unref(connection);
     dbus_error_free(&error);
@@ -27,7 +26,7 @@ DBusConnection* dbus_connect() {
             "net.hadess.SensorProxy", "/net/hadess/SensorProxy",
             "net.hadess.SensorProxy", "ClaimAccelerometer");
         char ok = dbus_connection_send_with_reply_and_block(
-                      connection, msg, 200, &error) != NULL;
+                      connection, msg, DBUS_TIMEOUT_INFINITE, &error) != NULL;
         dbus_message_unref(msg);
         if (ok) {
             return connection;
@@ -94,36 +93,6 @@ void handle_orientation(enum Orientation orientation) {
     }
 }
 
-int dbus_loop(DBusConnection* connection) {
-    DBusMessage* msg;
-    dbus_bus_add_match(connection,
-        "type='signal',interface='org.freedesktop.DBus.Properties'", &error);
-    dbus_connection_flush(connection);
-    atomic_store(&running, 1);
-    while (atomic_load(&running)) {
-        dbus_connection_read_write(connection, 0);
-        msg = dbus_connection_pop_message(connection);
-
-        if (msg == NULL) {
-            usleep(100000);
-            continue;
-        }
-
-        if (dbus_message_is_signal(
-                msg, "org.freedesktop.DBus.Properties", "PropertiesChanged")) {
-            handle_orientation(parse_orientation(msg));
-        }
-
-        dbus_message_unref(msg);
-    }
-    dbus_disconnect(connection);
-    return 0;
-}
-
-void sig_handler(int s) {
-    atomic_store(&running, 0);
-}
-
 int main(int argc, char* argv[]) {
     DBusConnection* connection = dbus_connect();
     if (connection == NULL) {
@@ -133,7 +102,29 @@ int main(int argc, char* argv[]) {
     if (argc > 1) {
         output = argv[1];
     }
-    signal(SIGINT, sig_handler);
-    signal(SIGTERM, sig_handler);
-    return dbus_loop(connection);
+
+    DBusMessage* msg;
+    dbus_bus_add_match(connection,
+        "type='signal',interface='org.freedesktop.DBus.Properties'", &error);
+    dbus_bus_add_match(connection,
+        "type='signal',sender='org.freedesktop.DBus',interface='org."
+        "freedesktop.DBus',member='NameOwnerChanged',arg0='net.hadess."
+        "SensorProxy'",
+        &error);
+    dbus_connection_flush(connection);
+    while (dbus_connection_read_write_dispatch(connection, -1)) {
+        msg = dbus_connection_pop_message(connection);
+        if (msg != NULL) {
+            if (dbus_message_is_signal(msg, "org.freedesktop.DBus.Properties",
+                    "PropertiesChanged")) {
+                handle_orientation(parse_orientation(msg));
+            } else {
+                dbus_message_unref(msg);
+                break;
+            }
+            dbus_message_unref(msg);
+        }
+    }
+    dbus_disconnect(connection);
+    return 0;
 }
