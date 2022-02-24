@@ -88,6 +88,14 @@ void handle_orientation(enum Orientation orientation) {
             system_fmt("swaymsg \"output %s transform 180\"", output);
             break;
 
+        case LeftUp:
+            system_fmt("swaymsg \"output %s transform 270\"", output);
+            break;
+
+        case RightUp:
+            system_fmt("swaymsg \"output %s transform 90\"", output);
+            break;
+
         default:
             break;
     }
