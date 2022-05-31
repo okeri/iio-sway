@@ -66,7 +66,7 @@ enum Orientation parse_orientation_signal(DBusMessage* msg) {
                 dbus_message_iter_next(&iter_dict);
                 dbus_message_iter_recurse(&iter_dict, &iter_v);
                 dbus_message_iter_get_basic(&iter_v, &orientation);
-    		return property_to_enum(orientation);
+                return property_to_enum(orientation);
             }
         }
     }
@@ -135,7 +135,7 @@ DBusMessage* request_orientation(DBusConnection* conn) {
     // check reply
     if (dbus_error_is_set(&error)) {
         printf("Error receiving orientation request: %s: %s\n",
-	       error.name, error.message);
+               error.name, error.message);
     }
 
     // clean up and return
